@@ -246,9 +246,9 @@ static uint64_t tegra_i2c_read(void *opaque, hwaddr offset, unsigned size)
         return s->cmd_data1;
     case 0x10 /* I2C_CMD_DATA2 */:
         return s->cmd_data2;
-    case 0x1c /* I2C_STATUS */:
+   /* case 0x1c /* I2C_STATUS */: /*
         uint32_t tmp = i2c_bus_busy(s->bus) ? (1<<8) : 0;
-        return s->status | tmp;
+        return s->status | tmp; 
     case 0x20 /* I2C_SL_CNFG */:
         return s->sl_config;
     case 0x2c /* I2C_SL_ADDR1 */:
