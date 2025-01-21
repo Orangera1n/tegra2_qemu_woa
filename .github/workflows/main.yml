@@ -1,0 +1,116 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+
+  build:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { icon: '🟦', sys: mingw64, mode: dynamic }
+          - { icon: '🟦', sys: mingw64, mode: static }
+
+    name: 🚧${{ matrix.icon }} ${{ matrix.sys }} Build ${{ matrix.mode }}
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+
+    - name: '🧰 Checkout'
+      uses: actions/checkout@main
+
+    - name: '${{ matrix.icon }} Setup MSYS2'
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: ${{ matrix.sys }}
+        update: true
+        install: >-
+          git
+          make
+          bison
+          diffutils
+          flex
+          grep
+          sed
+          base-devel
+          python
+          python-setuptools
+        pacboy: >-
+          toolchain:p
+          binutils:p
+          capstone:p
+          ccache:p
+          curl:p
+          cyrus-sasl:p
+          dtc:p
+          gcc:p
+          glib2:p
+          gnutls:p
+          gtk3:p
+          libgcrypt:p
+          libjpeg-turbo:p
+          libnfs:p
+          libpng:p
+          libssh:p
+          libtasn1:p
+          libusb:p
+          lzo2:p
+          nettle:p
+          ninja:p
+          pixman:p
+          pkgconf:p
+          python:p
+          SDL2:p
+          SDL2_image:p
+          snappy:p
+          spice:p
+          usbredir:p
+          zstd:p
+          libslirp:p
+
+    - name: 'Modify pkgconfig to avoid linker issues'
+      if: ${{ matrix.mode == 'static' }}
+      run: |
+             PKGCONFIG_FILE="$MINGW_PREFIX/lib/pkgconfig/gpg-error.pc"
+             sed -i 's#'$MINGW_PREFIX'/lib/libintl.dll.a#-llibintl#g' "$PKGCONFIG_FILE"
+             sed -i 's#'$MINGW_PREFIX'/lib/libiconv.dll.a#-llibiconv#g' "$PKGCONFIG_FILE"
+
+    - name: '🚧 Build QEMU (arm & aarch64) ${{ matrix.mode }}'
+      env:
+        arg: ${{ matrix.mode == 'dynamic' && '--enable-gtk --enable-sdl --enable-fdt=system --enable-avx2 --target-list=arm-softmmu,aarch64-softmmu --disable-werror' || '--disable-gtk --disable-spice --disable-usb-redir --disable-smartcard --disable-gnutls --disable-vnc-sasl --disable-libssh --enable-sdl --enable-fdt=system --enable-avx2 --target-list=arm-softmmu,aarch64-softmmu  --disable-werror --static --extra-cflags="-DCURL_STATICLIB -DLIBSSH_STATIC -DLIBSLIRP_STATIC -DCAIRO_WIN32_STATIC_BUILD" --extra-ldflags="-liconv"' }}
+      run: |
+          ./configure ${{ env.arg }}
+          make -j16
+
+    - name: Prepare Artifacts
+      shell: cmd
+      run: |
+          md ${{ github.workspace }}\artifacts
+          cd ${{ github.workspace }}\artifacts
+          move ${{ github.workspace }}\build\*.exe
+          move ${{ github.workspace }}\build\pc-bios share
+          robocopy ${{ github.workspace }}\pc-bios share /xn /xo /mov
+          del share\*.bz2
+
+    - name: Prepare Artifacts (dynamic only)
+      shell: cmd
+      if: ${{ matrix.mode == 'dynamic' }}
+      run: |
+          cd ${{ github.workspace }}\artifacts
+          copy D:\a\_temp\msys64\mingw64\bin\*.dll
+          md lib\gdk-pixbuf-2.0\2.10.0
+          fsutil file createNew lib\gdk-pixbuf-2.0\2.10.0\loaders.cache 0
+          move ${{ github.workspace }}\build\po share\locale
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@main
+      with:
+        name: QEMU (${{ matrix.mode }} build)
+        path: ${{ github.workspace }}/artifacts
+        compression-level: 9
